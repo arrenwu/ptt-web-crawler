@@ -10,6 +10,7 @@ import requests
 import argparse
 import time
 import codecs
+
 from bs4 import BeautifulSoup
 from six import u
 
@@ -72,18 +73,26 @@ class PttWebCrawler(object):
                     continue
                 soup = BeautifulSoup(resp.text, 'html.parser')
                 divs = soup.find_all("div", "r-ent")
+
+                # Each div of r-ent stands for an article
                 for div in divs:
                     try:
                         # ex. link would be <a href="/bbs/PublicServan/M.1127742013.A.240.html">Re: [問題] 職等</a>
                         href = div.find('a')['href']
                         link = self.PTT_URL + href
                         article_id = re.sub('\.html', '', href.split('/')[-1])
+                        try:
+                            # Extract mark information
+                            mark = div.find('div', 'mark').get_text()
+                        except Exception as e:
+                            print('{} failed to get the article mark due to {}'.format(link, e))
                         if div == divs[-1] and i == end-start:  # last div of last page
-                            self.store(filename, self.parse(link, article_id, board), 'a')
+                            self.store(filename, self.parse(link, article_id, board, mark=mark), 'a')
                         else:
-                            self.store(filename, self.parse(link, article_id, board) + ',\n', 'a')
-                    except:
-                        pass
+                            self.store(filename, self.parse(link, article_id, board, mark=mark) + ',\n', 'a')
+                    except Exception as e:
+                        print('An article failed the extraction. due to {}'.format(e))
+
                 time.sleep(0.1)
             self.store(filename, u']}', 'a')
             return filename
@@ -96,7 +105,7 @@ class PttWebCrawler(object):
         return filename
 
     @staticmethod
-    def parse(link, article_id, board, timeout=3):
+    def parse(link, article_id, board, mark='', timeout=3):
         print('Processing article:', article_id)
         resp = requests.get(url=link, cookies={'over18': '1'}, verify=VERIFY, timeout=timeout)
         if resp.status_code != 200:
@@ -180,7 +189,8 @@ class PttWebCrawler(object):
             'content': content,
             'ip': ip,
             'message_count': message_count,
-            'messages': messages
+            'messages': messages,
+            'mark': mark
         }
         # print 'original:', d
         return json.dumps(data, sort_keys=True, ensure_ascii=False)
