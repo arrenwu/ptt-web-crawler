@@ -57,7 +57,7 @@ class PttWebCrawler(object):
                 article_id = args.a
                 self.parse_article(article_id, board)
 
-    def parse_articles(self, start, end, board, path='.', timeout=3):
+    def parse_articles(self, start, end, board, path='.', extended_mode=False, timeout=3):
             filename = board + '-' + str(start) + '-' + str(end) + '.json'
             filename = os.path.join(path, filename)
             self.store(filename, u'{"articles": [', 'w')
@@ -87,9 +87,9 @@ class PttWebCrawler(object):
                         except Exception as e:
                             print('{} failed to get the article mark due to {}'.format(link, e))
                         if div == divs[-1] and i == end-start:  # last div of last page
-                            self.store(filename, self.parse(link, article_id, board, mark=mark), 'a')
+                            self.store(filename, self.parse(link, article_id, board, mark=mark, extended_mode=extended_mode), 'a')
                         else:
-                            self.store(filename, self.parse(link, article_id, board, mark=mark) + ',\n', 'a')
+                            self.store(filename, self.parse(link, article_id, board, mark=mark, extended_mode=extended_mode) + ',\n', 'a')
                     except Exception as e:
                         print('An article failed the extraction. due to {}'.format(e))
 
@@ -105,7 +105,7 @@ class PttWebCrawler(object):
         return filename
 
     @staticmethod
-    def parse(link, article_id, board, mark='', timeout=3):
+    def parse(link, article_id, board, mark='', extended_mode=False, timeout=3):
         print('Processing article:', article_id)
         resp = requests.get(url=link, cookies={'over18': '1'}, verify=VERIFY, timeout=timeout)
         if resp.status_code != 200:
@@ -142,9 +142,16 @@ class PttWebCrawler(object):
         # 移除 '※ 發信站:' (starts with u'\u203b'), '◆ From:' (starts with u'\u25c6'), 空行及多餘空白
         # 保留英數字, 中文及中文標點, 網址, 部分特殊符號
         filtered = [ v for v in main_content.stripped_strings if v[0] not in [u'※', u'◆'] and v[:2] not in [u'--'] ]
-        expr = re.compile(u(r'[^\u4e00-\u9fa5\u3002\uff1b\uff0c\uff1a\u201c\u201d\uff08\uff09\u3001\uff1f\u300a\u300b\s\w:/-_.?~%()]'))
+
+        if extended_mode:
+            # include all ascii characters as well as \n
+            expr = re.compile(u(r'[^\u4e00-\u9fa5\u3002\uff1b\uff0c\uff1a\u201c\u201d\uff08\uff09\u3001\uff1f\u300a\u300b\s\w -~\n]'))
+        else:
+            expr = re.compile(u(r'[^\u4e00-\u9fa5\u3002\uff1b\uff0c\uff1a\u201c\u201d\uff08\uff09\u3001\uff1f\u300a\u300b\s\w:/-_.?~%()]'))
         for i in range(len(filtered)):
             filtered[i] = re.sub(expr, '', filtered[i])
+            if extended_mode:
+                filtered[i] = re.sub('\n+', '\n', filtered[i])
 
         filtered = [_f for _f in filtered if _f]  # remove empty strings
         filtered = [x for x in filtered if article_id not in x]  # remove last line containing the url of the article
