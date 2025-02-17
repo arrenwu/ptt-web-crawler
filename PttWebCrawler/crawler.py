@@ -57,7 +57,7 @@ class PttWebCrawler(object):
                 article_id = args.a
                 self.parse_article(article_id, board)
 
-    def parse_articles(self, start, end, board, path='.', extended_mode=False, timeout=3):
+    def parse_articles(self, start, end, board, path='.', extended_mode=False, retry_max=3, timeout=5):
             filename = board + '-' + str(start) + '-' + str(end) + '.json'
             filename = os.path.join(path, filename)
             self.store(filename, u'{"articles": [', 'w')
@@ -77,6 +77,7 @@ class PttWebCrawler(object):
                 # Each div of r-ent stands for an article
                 for div in divs:
                     try:
+                        retry = 0
                         # ex. link would be <a href="/bbs/PublicServan/M.1127742013.A.240.html">Re: [問題] 職等</a>
                         href = div.find('a')['href']
                         link = self.PTT_URL + href
@@ -85,11 +86,29 @@ class PttWebCrawler(object):
                             # Extract mark information
                             mark = div.find('div', 'mark').get_text()
                         except Exception as e:
-                            print('{} failed to get the article mark due to {}'.format(link, e))
-                        if div == divs[-1] and i == end-start:  # last div of last page
-                            self.store(filename, self.parse(link, article_id, board, mark=mark, extended_mode=extended_mode), 'a')
-                        else:
-                            self.store(filename, self.parse(link, article_id, board, mark=mark, extended_mode=extended_mode) + ',\n', 'a')
+                            print('{} failed to get the article mark due to {}.'.format(article_id, e))
+
+                        while retry < retry_max:
+                            try:
+                                retry += 1
+                                if div == divs[-1] and i == end-start:  # last div of last page
+                                    self.store(filename,
+                                               self.parse(link, article_id, board, mark=mark, extended_mode=extended_mode, timeout=timeout),
+                                               'a')
+                                else:
+                                    self.store(filename,
+                                               self.parse(link, article_id, board, mark=mark, extended_mode=extended_mode, timeout=timeout) + ',\n',
+                                               'a')
+
+                                # Succeed, break from the while-loop.
+                                break
+                            except (requests.exceptions.ReadTimeout, requests.exceptions.TooManyRedirects) as common_read_e:
+                                if (retry >= retry_max):
+                                    # Exhaust retries. Raise the exception.
+                                    print('retry reaches limit {}. Abandon article {}'.format(retry_max, article_id))
+                                    raise common_read_e
+                                print('retry: {}. An exception happened at {} due to {}'.format(retry, article_id, common_read_e))
+
                     except Exception as e:
                         print('An article failed the extraction. due to {}'.format(e))
 
