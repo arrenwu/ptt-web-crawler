@@ -61,6 +61,7 @@ class PttWebCrawler(object):
             filename = board + '-' + str(start) + '-' + str(end) + '.json'
             filename = os.path.join(path, filename)
             self.store(filename, u'{"articles": [', 'w')
+            is_first_article = True
             for i in range(end-start+1):
                 index = start + i
                 print('Processing index:', str(index))
@@ -91,14 +92,21 @@ class PttWebCrawler(object):
                         while retry < retry_max:
                             try:
                                 retry += 1
-                                if div == divs[-1] and i == end-start:  # last div of last page
-                                    self.store(filename,
-                                               self.parse(link, article_id, board, mark=mark, extended_mode=extended_mode, timeout=timeout),
-                                               'a')
+                                parsed_article = self.parse(link, article_id, board, mark=mark, extended_mode=extended_mode, timeout=timeout)
+                                if not is_first_article:
+                                    self.store(filename,',\n', 'a')
                                 else:
-                                    self.store(filename,
-                                               self.parse(link, article_id, board, mark=mark, extended_mode=extended_mode, timeout=timeout) + ',\n',
-                                               'a')
+                                    is_first_article = False
+
+                                self.store(filename, parsed_article, 'a')
+                                # if div == divs[-1] and i == end-start:  # last div of last page
+                                #     self.store(filename,
+                                #                self.parse(link, article_id, board, mark=mark, extended_mode=extended_mode, timeout=timeout),
+                                #                'a')
+                                # else:
+                                #     self.store(filename,
+                                #                self.parse(link, article_id, board, mark=mark, extended_mode=extended_mode, timeout=timeout) + ',\n',
+                                #                'a')
 
                                 # Succeed, break from the while-loop.
                                 break
